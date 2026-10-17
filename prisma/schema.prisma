@@ -1,0 +1,193 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  CAPTAIN
+  MEMBER
+}
+
+enum TeamRole {
+  CAPTAIN
+  PLAYER
+  SUBSTITUTE
+  COACH
+}
+
+enum GameType {
+  VALORANT
+  MOBILE_LEGENDS
+  PUBG_MOBILE
+  FREE_FIRE
+  DOTA_2
+  CS2
+}
+
+enum ScrimFormat {
+  BO1
+  BO3
+  BO5
+  BATTLE_ROYALE
+}
+
+enum ScrimStatus {
+  OPEN
+  FULL
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String?
+  email           String?   @unique
+  emailVerified   DateTime?
+  image           String?
+  password        String?
+  role            Role      @default(MEMBER)
+  gameTag         String?
+  discordId       String?
+  discordUsername String?
+
+  accounts      Account[]
+  sessions      Session[]
+  teamMembers   TeamMember[]
+  captainTeams  Team[]         @relation("TeamCaptain")
+  scrimsCreated Scrim[]        @relation("ScrimCreator")
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  tag         String
+  logo        String?
+  game        GameType
+  description String?
+  inviteCode  String   @unique @default(cuid())
+
+  captainId   String
+  captain     User     @relation("TeamCaptain", fields: [captainId], references: [id])
+
+  members       TeamMember[]
+  registrations ScrimRegistration[]
+  matchWins     MatchResult[]       @relation("WinningTeam")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TeamMember {
+  id         String   @id @default(cuid())
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleInTeam TeamRole @default(PLAYER)
+  gameTag    String?
+  joinedAt   DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model Scrim {
+  id           String      @id @default(cuid())
+  title        String
+  game         GameType
+  format       ScrimFormat @default(BO1)
+  startTime    DateTime
+  maxSlots     Int         @default(2)
+  rules        String?     @db.Text
+  status       ScrimStatus @default(OPEN)
+  serverRegion String      @default("Singapore / Asia")
+  prizePool    String?
+
+  createdById  String?
+  createdBy    User?       @relation("ScrimCreator", fields: [createdById], references: [id])
+
+  registrations ScrimRegistration[]
+  matchResults  MatchResult[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model ScrimRegistration {
+  id           String             @id @default(cuid())
+  scrimId      String
+  scrim        Scrim              @relation(fields: [scrimId], references: [id], onDelete: Cascade)
+  teamId       String
+  team         Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  status       RegistrationStatus @default(PENDING)
+  notes        String?
+  registeredAt DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([scrimId, teamId])
+}
+
+model MatchResult {
+  id           String   @id @default(cuid())
+  scrimId      String
+  scrim        Scrim    @relation(fields: [scrimId], references: [id], onDelete: Cascade)
+  winnerTeamId String?
+  winnerTeam   Team?    @relation("WinningTeam", fields: [winnerTeamId], references: [id])
+  scoreTeamA   Int      @default(0)
+  scoreTeamB   Int      @default(0)
+  teamAName    String?
+  teamBName    String?
+  details      String?  @db.Text
+  proofUrl     String?
+  recordedAt   DateTime @default(now())
+}
